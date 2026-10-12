@@ -30,6 +30,8 @@ function valuesFor(feature,index){
 try{
   const hash=await bcrypt.hash(password,10);
   for(const [email,name,role] of users) await pool.query(`INSERT INTO app_users(email,password_hash,name,role) VALUES($1,$2,$3,$4) ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash,name=excluded.name,role=excluded.role`,[email,hash,name,role]);
+  const alreadySeeded=(await pool.query("SELECT 1 FROM audit_events WHERE actor='system' AND action='seeded' AND object_type='application' AND object_reference=$1 LIMIT 1",[config.id])).rowCount>0;
+  if(!alreadySeeded){
   for(const [featureIndex,feature] of config.features.entries()){
     for(let index=1;index<=15;index+=1){
       const reference=`${feature.code}-${String(index).padStart(3,'0')}`;
@@ -39,8 +41,9 @@ try{
       const status=statuses[(index+featureIndex)%statuses.length];
       const title=`${feature.title} · ${feature.seedSubjects[(index-1)%feature.seedSubjects.length]}`;
       const due=new Date(Date.UTC(2026,7,1+((index*3+featureIndex)%85))).toISOString().slice(0,10);
-      await pool.query(`INSERT INTO feature_records(feature_id,reference,title,status,owner,risk,due_date,amount,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(reference) DO UPDATE SET title=excluded.title,status=excluded.status,owner=excluded.owner,risk=excluded.risk,due_date=excluded.due_date,amount=excluded.amount,payload=excluded.payload,updated_at=now()`,[feature.id,reference,title,status,owners[(index+featureIndex)%owners.length],risk,due,amount,payload]);
+      await pool.query(`INSERT INTO feature_records(feature_id,reference,title,status,owner,risk,due_date,amount,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(reference) DO NOTHING`,[feature.id,reference,title,status,owners[(index+featureIndex)%owners.length],risk,due,amount,payload]);
     }
+  }
   }
   const count=(await pool.query('SELECT count(*)::int AS count FROM feature_records')).rows[0].count;
   if(count>=config.features.length*15){
